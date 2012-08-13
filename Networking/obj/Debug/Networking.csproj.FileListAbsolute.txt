@@ -4,3 +4,8 @@ c:\users\eoin\documents\visual studio 2010\Projects\Networking\Networking\Bin\De
 c:\users\eoin\documents\visual studio 2010\Projects\Networking\Networking\obj\Debug\ResolveAssemblyReference.cache
 c:\users\eoin\documents\visual studio 2010\Projects\Networking\Networking\obj\Debug\Networking.dll
 c:\users\eoin\documents\visual studio 2010\Projects\Networking\Networking\obj\Debug\Networking.pdb
+C:\Users\Eoin\WP7-Networking\Networking\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\Eoin\WP7-Networking\Networking\obj\Debug\Networking.dll
+C:\Users\Eoin\WP7-Networking\Networking\Bin\Debug\Networking.dll
+C:\Users\Eoin\WP7-Networking\Networking\Bin\Debug\Networking.pdb
+C:\Users\Eoin\WP7-Networking\Networking\obj\Debug\Networking.pdb
