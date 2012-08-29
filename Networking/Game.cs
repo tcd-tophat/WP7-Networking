@@ -23,19 +23,13 @@ namespace Tophat
         public DateTime time { get; private set; }
         public int gameType { get; private set; }
         public string name { get; private set; }
-        public System.Collections.Generic.Dictionary<string, object> Field;
+        public bool started { get; private set; }
 
-        public bool isPlaying { get; set; }
+        public int timeElapsed { get; private set; }
 
-        public Game(int id, User creator, DateTime time, int gameType, string name, List<Player> players, int maxplayers)
+        public Game(int id)
         {
             this.id = id;
-            this.players = players;
-            this.creator = creator;
-            this.time = time;
-            this.gameType = gameType;
-            this.name = name;
-            this.maxplayers = maxplayers;
         }
 
         public bool Equals(Game game)

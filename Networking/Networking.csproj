@@ -53,7 +53,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Game.cs" />
-    <Compile Include="GameType.cs" />
     <Compile Include="Networking%28Communication%29.cs" />
     <Compile Include="Networking%28Processing%29.cs" />
     <Compile Include="Player.cs" />

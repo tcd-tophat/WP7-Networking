@@ -21,16 +21,7 @@ namespace Tophat
         public List<Game> joined_games;
         public string id { get; set; }
         public string email;
-
-        public User(string email, string name = null, string created = null, string photo = null, List<Game> joined_games = null, string id = null)
-        {
-            this.name = name;
-            this.email = email;
-            this.created = created;
-            this.photo = photo;
-            this.joined_games = joined_games;
-            this.id = id;
-        }
+        public bool registered;
 
         public bool Equals(User user)
         {

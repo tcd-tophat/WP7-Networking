@@ -22,6 +22,5 @@ namespace Tophat
         public int id { get; set; }
         public float? lattitude;
         public float? longitude;
-        
     }
 }
