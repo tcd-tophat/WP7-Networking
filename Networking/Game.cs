@@ -25,8 +25,6 @@ namespace Tophat
         public string name { get; private set; }
         public bool started { get; private set; }
 
-        public int timeElapsed { get; private set; }
-
         public Game(int id)
         {
             this.id = id;

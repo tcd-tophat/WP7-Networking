@@ -16,55 +16,75 @@ namespace Tophat
 {
     public partial class Networking
     {
+
         #region HttpRequests
 
-        private static AsyncCallback _aSyncCallback;
-        private static UploadStringCompletedEventHandler _eventHandlerU;
-        private static DownloadStringCompletedEventHandler _eventHandlerD;
-        private static string _data;
-        private static string _resource;
+        private static Queue<Action> _requests;
+        private static Action currentRequest;
 
         /// <summary>
-        /// 
+        /// Http GET request
         /// </summary>
         /// <param name="resource">The resource name is appended to the URL. e.g. "/games"</param>
-        /// <param name="eventHandler">The method that is invoked when the request has been completed. 
-        /// Note: This also includes failed requests, so make sure to catch the exception!</param>
-        public static void GET(DownloadStringCompletedEventHandler eventHandler, string resource = "")
+        /// <param name="eventHandler">The method that is invoked when the request has been completed.
+        /// Note: Use failedRequest</param>
+        public static void GET(DownloadStringCompletedEventHandler eventHandler, string resource = "", bool includeApiToken = false, int depth = 0)
         {
-            Requests++;
-
+            //Check if any parameters should be added to the URL
+            if (includeApiToken)
+            {
+                resource += "?apitoken=" + Apitoken;
+                if (depth > 0)
+                    resource += "&depth=" + depth;
+            }
+            else
+            {
+                if (depth > 0)
+                    resource += "?depth=" + depth;
+            }
+            
+            //Check if a request is currently being made already
+            if (_requests.Count > 0 && IsMakingRequest)
+            {
+                //If it has, then queue it for later
+                _requests.Enqueue(() =>
+                {
+                    GET(eventHandler, resource);
+                });
+                return;
+            }
             //Store the data in case we need to retry the request
-            _eventHandlerD = eventHandler;
-            _resource = resource;
+            currentRequest = () => GET(eventHandler, resource);
+
 
             WebClient wc = new WebClient();
-            wc.DownloadStringAsync(new Uri(URL + resource));
+            wc.DownloadStringAsync(new Uri(URL + resource + "&r=" + DateTime.Now.Ticks));
+            wc.Headers["Cache-Control"] = "no-cache";
+            wc.DownloadStringCompleted += ParseResponse;
             wc.DownloadStringCompleted += eventHandler;
             wc.DownloadStringCompleted += OnGet;
-
         }
 
         private static void OnGet(object sender, DownloadStringCompletedEventArgs e)
         {
             try
             {
-                //This just nudges the event args into throwing an exception if it failed
+                //This just nudges the event args into throwing an exception if the request failed
                 string x = e.Result;
-                retries = 0;
+                nextRequest();
             }
             catch(WebException)
             {
                 if (retries < MAX_RETRIES)
                 {
-                    GET(_eventHandlerD, _resource);
+                    currentRequest();
                     retries++;
                 }
                 else
-                    retries = 0;
+                {
+                    nextRequest();
+                }
             }
-            //The request has been completed; whether it failed or not doesn't matter
-            Requests--;
         }
 
         /// <summary>
@@ -74,19 +94,39 @@ namespace Tophat
         /// Note: This also includes failed requests, so make sure to catch the exception!</param>
         /// <param name="data">The json string to be sent with the request</param>
         /// <param name="resource">The extra parameter to be appended to the URL. e.g. "/games"</param>
-        public static void POST(UploadStringCompletedEventHandler eventHandler, string data, string resource = "")
+        public static void POST(UploadStringCompletedEventHandler eventHandler, string data, string resource = "", bool includeApiToken = false, int depth = 0)
         {
-            Requests++;
+            //Check if any parameters should be added to the URL
+            if (includeApiToken)
+            {
+                resource += "?apitoken=" + Apitoken;
+                if (depth > 0)
+                    resource += "&depth=" + depth;
+            }
+            else
+            {
+                if (depth > 0)
+                    resource += "?depth=" + depth;
+            }
+
+            if (_requests.Count > 0 && IsMakingRequest)
+            {
+                _requests.Enqueue(() =>
+                    {
+                        POST(eventHandler, data, resource);
+                    });
+                return;
+            }
+
 
             //Store the data in case we need to retry the request
-            _eventHandlerU = eventHandler;
-            _data = data;
-            _resource = resource;
+            currentRequest = () => POST(eventHandler, data, resource);
 
             WebClient wc = new WebClient();
             wc.Headers["Content-Type"] = "application/x-www-form-urlencoded";
 
             wc.UploadStringAsync(new Uri(URL + resource), "POST", data);
+            wc.UploadStringCompleted += ParseResponse;
             wc.UploadStringCompleted += eventHandler;
             wc.UploadStringCompleted += OnPost;
         }
@@ -97,22 +137,19 @@ namespace Tophat
             {
                 //This just nudges the event args into throwing an exception if it failed
                 string x = e.Result;
-            
-                retries = 0;
+
+                nextRequest();
             }
             catch (WebException)
             {
                 if (retries < MAX_RETRIES)
                 {
-                    POST(_eventHandlerU, _data, _resource);
+                    currentRequest();
                     retries++;
                 }
                 else
-                    retries = 0;
+                    nextRequest();
             }
-
-            //The request has been completed; whether it failed or not doesn't matter
-            Requests--;
         }
 
         /// <summary>
@@ -121,44 +158,146 @@ namespace Tophat
         /// <param name="eventHandler">The method that is invoked when the request has been completed. 
         /// Note: This also includes failed requests, so make sure to catch the exception!</param>
         /// <param name="resource">The extra parameter to be appended to the URL. e.g. "/games"</param>
-        public static void DELETE(AsyncCallback aSyncCallback, string resource = "")
+        public static void DELETE(AsyncCallback asyncCallback, string resource = "", bool includeApiToken = false, int depth = 0)
         {
+            //Check if any parameters should be added to the URL
+            if (includeApiToken)
+            {
+                resource += "?apitoken=" + Apitoken;
+                if (depth > 0)
+                    resource += "&depth=" + depth;
+            }
+            else
+            {
+                if (depth > 0)
+                    resource += "?depth=" + depth;
+            }
+
+            if (_requests.Count > 0 && IsMakingRequest)
+            {
+                _requests.Enqueue(() =>
+                    {
+                        DELETE(asyncCallback, resource);
+                    });
+                return;
+            }
+
             //Store the data in case we need to retry the request
-            _aSyncCallback = aSyncCallback;
-            _resource = resource;
+            currentRequest = () => DELETE(asyncCallback, resource);
 
             HttpWebRequest wc = WebRequest.CreateHttp(URL + resource);
             wc.Method = "DELETE";
 
-            wc.BeginGetResponse(new Networking().OnDelete + aSyncCallback, "");
-
-            Requests++;
+            wc.BeginGetResponse(OnDelete + asyncCallback, "");
         }
 
-        private void OnDelete(IAsyncResult e)
+        private static void OnDelete(IAsyncResult e)
         {
-            lock (this)
+            if (e.IsCompleted)
             {
-                //This just nudges the event args into throwing an exception if it failed
-                if (e.IsCompleted)
+                nextRequest();
+            }
+            else
+            {
+                if (retries < MAX_RETRIES)
                 {
-                    retries = 0;
+                    currentRequest();
+                    retries++;
                 }
                 else
                 {
-                    if (retries < MAX_RETRIES)
-                    {
-                        DELETE(_aSyncCallback, _resource);
-                        retries++;
-                    }
-                    else
-                        retries = 0;
+                    nextRequest();
                 }
             }
-            //The request has been completed; whether it failed or not doesn't matter
-            Requests--;
         }
-        
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="asyncCallback">The method that is invoked when the request has been completed. 
+        /// Note: This also includes failed requests, so make sure to catch the exception!</param>
+        /// <param name="resource">The extra parameter to be appended to the URL. e.g. "/games"</param>
+        public static void PUT(AsyncCallback asyncCallback, string data, string resource = "", bool includeApiToken = false)
+        {
+            if (includeApiToken)
+                resource += "?apitoken=" + Apitoken;
+
+            if (_requests.Count > 0 && IsMakingRequest)
+            {
+                _requests.Enqueue(() =>
+                {
+                    PUT(asyncCallback, data, resource);
+                });
+                return;
+            }
+
+            //Store the data in case we need to retry the request
+            currentRequest = () => PUT(asyncCallback, data, resource);
+
+            HttpWebRequest request = WebRequest.CreateHttp(new Uri(URL + resource, UriKind.Absolute));
+            request.Method = "PUT";
+            request.ContentType = "application/x-www-form-urlencoded"; 
+
+            request.BeginGetRequestStream(ar =>
+            {
+                var requestStream = request.EndGetRequestStream(ar);
+                using (var sw = new System.IO.StreamWriter(requestStream))
+                {
+                    sw.Write(data);
+                }
+
+                request.BeginGetResponse(a =>
+                {
+                    try
+                    {
+                        var response = request.EndGetResponse(a);
+                        var responseStream = response.GetResponseStream();
+                        using (var sr = new System.IO.StreamReader(responseStream))
+                        {
+                            // Parse the response message here
+                        }
+                    }
+                    catch
+                    {}
+
+                }, null);
+
+            }, null);
+
+            //wc.BeginGetResponse(OnPut + asyncCallback);
+        }
+
+
+        private static void OnPut(IAsyncResult e)
+        {
+            if (e.IsCompleted)
+            {
+                nextRequest();
+            }
+            else
+            {
+                if (retries < MAX_RETRIES)
+                {
+                    currentRequest();
+                    retries++;
+                }
+                else
+                {
+                    nextRequest();
+                }
+            }
+        }
+
+        private static void nextRequest()
+        {
+            currentRequest = null;
+            retries = 0;
+            if (_requests.Count > 0)
+            {
+                //Begin the next request in queue
+                _requests.Dequeue().Invoke();
+            }
+        }
 
 #endregion
 
@@ -174,7 +313,7 @@ namespace Tophat
         {
             string data = "data={\"email\":\"" + email + "\",\"password\":\"" + password + "\"}";
             //A login is a post request
-            POST(ParseResponse + eventHandler, data, "/apitokens");
+            POST(eventHandler, data, "/apitokens");
         }
 
         /// <summary>
@@ -185,12 +324,12 @@ namespace Tophat
         {
             string data = "data={}";
             //A login is a post request
-            POST(ParseResponse + eventHandler, data, "/apitokens");
+            POST(eventHandler, data, "/apitokens");
         }
 
         public static void GetUserDetails(DownloadStringCompletedEventHandler eventHandler = null)
         {
-            GET(ParseResponse + eventHandler + OnGetUserDetails, "/users/" + LocalUser.email + "?apitoken=" + Apitoken);
+            GET(eventHandler + OnGetUserDetails, "/users/" + LocalUser.email, true, 1);
         }
 
         private static void OnGetUserDetails(object sender, DownloadStringCompletedEventArgs e)
@@ -223,14 +362,13 @@ namespace Tophat
             string data = "data=" + JsonConvert.SerializeObject(dict);
 
             //Creating a user is a post request
-            POST(ParseResponse + eventHandler, data, "/users?apitoken=" + Apitoken);
+            POST(eventHandler, data, "/users", true);
         }
 
         public static void GetGames<G>(DownloadStringCompletedEventHandler eventHandler = null)
         {
-            GET(new DownloadStringCompletedEventHandler(OnGetGames<G>) + eventHandler, "/games?apitoken=" + Apitoken);
+            GET(new DownloadStringCompletedEventHandler(OnGetGames<G>) + eventHandler, "/games", true, 3);
         }
-
 
         private static void OnGetGames<G>(object sender, DownloadStringCompletedEventArgs e)
         {
@@ -265,7 +403,7 @@ namespace Tophat
 
         public static void GetGameById<G>(int id, DownloadStringCompletedEventHandler eventHandler = null)
         {
-            GET(ParseResponse + new DownloadStringCompletedEventHandler(OnGetGameById<G>) + eventHandler, "/games/" + id + "?apitoken=" + Apitoken);
+            GET(new DownloadStringCompletedEventHandler(OnGetGameById<G>) + eventHandler, "/games/" + id, true, 2);
         }
 
         private static void OnGetGameById<G>(object sender, DownloadStringCompletedEventArgs e)
@@ -275,16 +413,22 @@ namespace Tophat
                 Game game = JsonConvert.DeserializeObject<G>(e.Result) as Game;
                 for (int i = 0; i < Games.Count; i++)
                 {
-                    if (Games[i].id == game.id)
+                    if (Games[i].id == (game).id)
+                    {
                         Games[i] = game;
+                        return;
+                    }
                 }
+
+                //if the game wasn't found, then add it to the list
+                Games.Add(game);
             }
         }
 
         public static void CreateGame<T>(string name, int type, UploadStringCompletedEventHandler eventHandler = null)
         {
-            POST(new UploadStringCompletedEventHandler(ParseResponse) + new UploadStringCompletedEventHandler(OnCreateGame<T>) + eventHandler, 
-                "data={\"name\":\"" + name + "\",\"game_type_id\":\"" + type + "\"}", "/games?apitoken=" + Apitoken);
+            POST(new UploadStringCompletedEventHandler(OnCreateGame<T>) + eventHandler, 
+                "data={\"name\":\"" + name + "\",\"game_type_id\":\"" + type + "\"}", "/games", true, 1);
         }
 
 
@@ -302,18 +446,18 @@ namespace Tophat
             extras["name"] = playername;
             extras["game"] = temp;
 
-
             string data = "data=" + JsonConvert.SerializeObject(extras);
-            POST(new UploadStringCompletedEventHandler(ParseResponse) + new UploadStringCompletedEventHandler(OnJoinGame<P>) + eventHandler, 
-                data, "/players?apitoken=" + Apitoken);
+            POST(new UploadStringCompletedEventHandler(OnJoinGame<P>) + eventHandler, data, "/players", true, 3);
         }
 
         private static void OnJoinGame<P>(object sender, UploadStringCompletedEventArgs e)
         {
             try
             {
-                MessageBox.Show(e.Result);
                 Player p = JsonConvert.DeserializeObject<P>(e.Result) as Player;
+
+                if (Players == null)
+                    Players = new List<Player>();
 
                 for (int i = 0; i < Players.Count; i++)
                 {
@@ -325,7 +469,7 @@ namespace Tophat
                 }
                 Players.Add(p);
 
-                SaveData("Players", JsonConvert.SerializeObject(Players as List<P>));
+                SaveData("Players", JsonConvert.SerializeObject(Players));
             }
             catch (WebException) { }
         }
@@ -358,20 +502,42 @@ namespace Tophat
 
         public static void DeleteGame(int gameindex, AsyncCallback aSyncCallback = null)
         {
-            DELETE(aSyncCallback, "/games/" + gameindex);
+            DELETE(aSyncCallback, "/games/" + gameindex, true);
         }
 
+        public static void GetTeamScores(int teamid, DownloadStringCompletedEventHandler eventHandler = null)
+        {
+            GET(eventHandler, "/teamscore/" + teamid, true, 2);
+        }
 
+        public static void UpdateGPS(int playerid, double lattitude, double longitude, AsyncCallback asyncCallback = null)
+        {
+            var dict = new Dictionary<string, string>();
+            dict["lat"] = lattitude.ToString("0.000");
+            dict["lon"] = longitude.ToString("0.000");
+            string x = JsonConvert.SerializeObject(dict);
+            System.Diagnostics.Debugger.Break();
+            PUT(asyncCallback, JsonConvert.SerializeObject(dict), "/player/" + playerid, true);
+        }
 
         public static void UploadImage(System.IO.Stream s, UploadStringCompletedEventHandler eventHandler = null)
         {
             //TODO: Upload the image
-            //POST(new Networking().ParseResponse + eventHandler, "/images?apitoken=" + Apitoken);
+            //POST(ParseResponse + eventHandler, "/images", true);
         }
 
-        public static void Kill(Dictionary<string, string> parameters, UploadStringCompletedEventHandler eventHandler = null)
+        public static void Kill(Dictionary<string, object> parameters, UploadStringCompletedEventHandler eventHandler = null)
         {
-            POST(ParseResponse, "data=" + JsonConvert.SerializeObject(parameters), "/kills?apitoken=" + Apitoken);
+            POST(eventHandler, "data=" + JsonConvert.SerializeObject(parameters), "/kills", true);
+        }
+
+        public static void Respawn(string qrcode, int playerid, AsyncCallback asyncCallBack = null)
+        {
+            var dict = new Dictionary<string, object>();
+            dict["respawn_code"] = qrcode;
+            dict["id"] = playerid;
+
+            PUT(asyncCallBack, "data=" + JsonConvert.SerializeObject(dict), "/players/" + playerid, true);
         }
     }
 }

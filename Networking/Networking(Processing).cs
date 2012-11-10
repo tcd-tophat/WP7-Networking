@@ -24,6 +24,8 @@ namespace Tophat
     {
         public static User LocalUser { get; private set; }
 
+        public static int LastError { get; private set; }
+
         public static List<Player> Players { get; private set; }
         /// <summary>
         /// Set the local copy of players using a json string
@@ -51,23 +53,6 @@ namespace Tophat
             return JsonConvert.SerializeObject(Players);
         }
 
-        /// <summary>
-        /// Returns the player associated with the given game id.
-        /// If none are associated, it returns null
-        /// </summary>
-        /// <param name="GameId"></param>
-        /// <returns></returns>
-        public static Player GetPlayerByGameId_Local(int GameId)
-        {
-            for (int i = 0; i < Players.Count; i++)
-            {
-                if ((Players[i].game as Game).id == GameId)
-                {
-                    return Players[i];
-                }
-            }
-            return null;
-        }
 
         /// <summary>
         /// Gets one of the game from the locally stored list
@@ -95,11 +80,9 @@ namespace Tophat
         private static int retries;
         private const int MAX_RETRIES = 0;
 
-        private static int Requests;
-        private static bool noResponse;
         public static bool IsMakingRequest
-        {
-            get { return Requests > 0;}
+        { 
+            get { return currentRequest != null; }
         }
 
 
@@ -151,31 +134,27 @@ namespace Tophat
         {
             _url = url + ":" + port;
             _results = new Dictionary<string, object>();
-            Requests = 0;
             Apitoken = "";
             Players = new List<Player>();
             Games = new List<Game>();
+            _requests = new Queue<Action>();
 
             //Load the saved data
             string data = LoadData("User");
-            MessageBox.Show(data);
             if (data != "")
                 LocalUser = JsonConvert.DeserializeObject<User>(data);
-            else
-                ;//CreateDirectory("User");
 
             data = LoadData("Apitoken");
             if (data != "")
                 Networking.Apitoken = data;
-            else
-                ;// CreateDirectory("Apitoken");
 
             data = LoadData("Players");
             if (data != "" && data != "null")
             {
                 List<P> spplayers = JsonConvert.DeserializeObject(data, typeof(List<P>), new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.All }) as List<P>;
 
-                //Cast each player
+                //Cast each player separately because it 
+                //can't be done all at once when using a list
                 foreach (P player in spplayers)
                 {
                     Players.Add(player as Player);
@@ -184,7 +163,7 @@ namespace Tophat
         }
 
 
-        public static void ProcessError(WebException ex)
+        private static void ProcessError(WebException ex)
         {
             //ex.Response appeared as null here when the screen was locked and then unlocked
             //This prevents an unhandled exception
@@ -199,15 +178,12 @@ namespace Tophat
                         if (error == "") //No data implies no response from the server
                         {
                             MessageBox.Show("There was no response from the server. Please check that you are connected to the internet");
-                            noResponse = true;
+                            LastError = 1;
                         }
                         else
                         {
                             Dictionary<string, object> dict = JsonConvert.DeserializeObject<Dictionary<string, object>>(error);
-                            //Simply show the error for now
-                            MessageBox.Show(String.Format("{0}:\n{1}",
-                                dict["error_code"],
-                                dict["error_message"]));
+                            LastError = int.Parse(dict["error_code"].ToString());
                         }
                     }
                 }
@@ -216,7 +192,6 @@ namespace Tophat
 
         private static void ParseResponse(object sender, EventArgs e)
         {
-            noResponse = false;
             try
             {
                 Dictionary<string, object> dict;
@@ -264,8 +239,10 @@ namespace Tophat
         {
             Apitoken = "";
             LocalUser = null;
-            SaveData("Apitoken.txt", "");
-            SaveData("User.txt", "");
+            Players = new List<Player>();
+            Games = new List<Game>();
+
+            Networking.DeleteFile("Apitoken", "User", "CurrentGame", "Players");
         }
 
 
@@ -299,10 +276,14 @@ namespace Tophat
             }
         }
 
-        public static void DeleteFile(string path)
+        public static void DeleteFile(params string[] path)
         {
             IsolatedStorageFile f = IsolatedStorageFile.GetUserStoreForApplication();
-            f.DeleteFile(path);
+            for (int i = 0; i < path.Length; i++)
+            {
+                if (f.FileExists("data\\" + path[i]))
+                    f.DeleteFile("data\\" + path[i]);
+            }
         }
 
         public static void SaveData(string path, string data)
